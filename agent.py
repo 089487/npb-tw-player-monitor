@@ -83,10 +83,12 @@ def get_lin_batting_order(game_id):
 
 def monitor_game_pitcher(soup, last_notified_pitcher):
     """監測場上投手是否為目標選手"""
+    print("checking pitcher")
     current_pitcher_name = ""
     rslt_table = soup.find('table', id='gm_rslt')
     if rslt_table:
         tbody = rslt_table.find('tbody')
+        print(tbody,'tbodu')
         if tbody:
             # 抓取表格內 td 包含球員名稱的連結，第 1 個是打者，第 2 個是投手
             player_tds = tbody.find_all('td', class_='bb-splitsTable__data--text')
@@ -165,32 +167,50 @@ def monitor_game_batter(soup, html_text, lin_order, last_notified_distance):
 
 def monitor_game(game_id, lin_order):
     """即時監控 Play-by-Play"""
-    url = f"https://baseball.yahoo.co.jp/npb/game/{game_id}/text" # 文字轉播頁面
+    url_text = f"https://baseball.yahoo.co.jp/npb/game/{game_id}/text" # 文字轉播頁面
+    url_score = f"https://baseball.yahoo.co.jp/npb/game/{game_id}/score" # 記分板頁面
     last_notified_distance = -1
     last_notified_pitcher = ""
     print(f"[DEBUG] 開始監控比賽 {game_id}，設定目標球員為第 {lin_order} 棒\n")
     
     while True:
         try:
-            res = requests.get(url, headers=HEADERS)
-            soup = BeautifulSoup(res.text, 'html.parser')
+            # 取得文字轉播頁面 (給打者監控用)
+            res_text = requests.get(url_text, headers=HEADERS)
+            soup_text = BeautifulSoup(res_text.text, 'html.parser')
             
-            # 判斷是否比賽結束
-            status = soup.find('span', class_='bb-gameStatus')
-            if status:
-                print(f"[DEBUG] 當前比賽狀態: {status.text}")
-                if '試合終了' in status.text or '中止' in status.text:
+            # 取得記分板頁面 (給投手監控用)
+            res_score = requests.get(url_score, headers=HEADERS)
+            soup_score = BeautifulSoup(res_score.text, 'html.parser')
+            
+            # 判斷是否比賽結束 (統一由 score 頁面判斷)
+            status_container = (
+                soup_score.find('div', id='result') or 
+                soup_score.find('h4', class_='live') or 
+                soup_score.find('div', id='liveinfo')
+            )
+            if status_container:
+                status_text = status_container.text
+                print(f"[DEBUG] 當前比賽狀態: {status_text.strip()}")
+                if '試合終了' in status_text or '中止' in status_text:
                     msg = "⚾ 今日西武獅比賽已結束或中止！Agent 進入休息模式。"
                     # send_telegram_notify(msg)  # 為了 debug 先屏蔽
                     print(msg)
                     send_desktop_notify("⚾ 比賽結束", msg)
                     break
+            else:
+                # 備用檢查：直接在全文搜尋
+                if '試合終了' in soup_score.text:
+                    msg = "⚾ 今日西武獅比賽已結束！Agent 進入休息模式。"
+                    print(msg)
+                    send_desktop_notify("⚾ 比賽結束", msg)
+                    break
                 
-            # 負責監測投手並推播
-            last_notified_pitcher = monitor_game_pitcher(soup, last_notified_pitcher)
+            # 負責監測投手並推播 (傳入 score 頁面的 soup)
+            last_notified_pitcher = monitor_game_pitcher(soup_score, last_notified_pitcher)
                 
-            # 負責監測打者棒次並推播
-            last_notified_distance = monitor_game_batter(soup, res.text, lin_order, last_notified_distance)
+            # 負責監測打者棒次並推播 (傳入 text 頁面的 soup)
+            last_notified_distance = monitor_game_batter(soup_text, res_text.text, lin_order, last_notified_distance)
 
         except Exception as e:
             print(f"監控錯誤: {e}")
@@ -198,7 +218,7 @@ def monitor_game(game_id, lin_order):
         print("[DEBUG] 等待 15 秒後更新... (開發測試用先縮短時間)\n")
         time.sleep(15) # 開發測試可以改短一點，實際上線建議 60 秒免得被 Ban IP
 
-def daily_job():
+def daily_job(only_pitcher=False):
     print(f"[{datetime.now()}] 執行今日賽程檢查...")
     game_id, start_time = get_today_seibu_game()
     
@@ -244,7 +264,10 @@ def daily_job():
             lin_order = 4 
             
         # 啟動監控
-        monitor_game(game_id, lin_order)
+        if only_pitcher:
+            monitor_game(game_id, -1)
+        else:
+            monitor_game(game_id,lin_order)
     else:
         print("今日西武獅無賽程，Agent 繼續睡覺。")
 
