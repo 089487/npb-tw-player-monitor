@@ -3,12 +3,11 @@ from bs4 import BeautifulSoup
 import time
 import schedule
 import re
+import platform
 import subprocess
 from datetime import datetime, timedelta
 
 # ================= 設定區 =================
-TELEGRAM_BOT_TOKEN = '在這裡填入你的_Telegram_Bot_Token'
-TELEGRAM_CHAT_ID = '在這裡填入你的_Chat_ID'
 TARGET_PLAYER = ['林安可', '林 安可', '林'] # 日本 Yahoo 可能顯示的名稱
 TARGET_PITCHER = ['宋家豪', '宋 家豪', '張奕', '孫易磊'] # 目標投手名單
 TEAM_NAME = '西武'
@@ -18,21 +17,22 @@ HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 }
 
-def send_telegram_notify(message):
-    """發送 Telegram 推播通知"""
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
-    try:
-        requests.post(url, json=payload)
-    except Exception as e:
-        print(f"通知發送失敗: {e}")
-
 def send_desktop_notify(title, message):
-    """發送 Linux 桌面推播通知"""
+    """跨平台發送桌面推播通知"""
     try:
-        subprocess.run(['notify-send', title, message])
+        sys_name = platform.system()
+        if sys_name == 'Linux':
+            subprocess.run(['notify-send', title, message])
+        elif sys_name == 'Darwin': # macOS
+            subprocess.run(['osascript', '-e', f'display notification "{message}" with title "{title}"'])
+        elif sys_name == 'Windows':
+            # 需安裝 win10toast 或 plyer，這裡示範用 plyer
+            from plyer import notification
+            notification.notify(title=title, message=message, app_name='NPB Monitor')
+        else:
+            print(f"不支援的系統桌面通知 ({sys_name}): {title} - {message}")
     except Exception as e:
-        print(f"桌面通知發送失敗 (請確認是否安裝 libnotify): {e}")
+        print(f"桌面通知發送失敗: {e}")
 
 def get_today_seibu_game():
     """爬取今日賽程，尋找西武獅的比賽 ID"""
@@ -101,7 +101,6 @@ def monitor_game_pitcher(soup, last_notified_pitcher):
             print(f"[DEBUG] 當前登板投手: {current_pitcher_name}")
             if any(name in current_pitcher_name for name in TARGET_PITCHER):
                 msg = f"⚾ 準備看電視！目標投手 {current_pitcher_name} 已經登板！"
-                # send_telegram_notify(msg)
                 print(msg)
                 send_desktop_notify("⚾ 台灣投手登板！", msg)
                 
@@ -150,7 +149,6 @@ def monitor_game_batter(soup, html_text, lin_order, last_notified_distance):
                 # 包含 0 表示他正在打擊 (只要 distance 跟上一次不一樣就跳通知)
                 if distance in [0, 1, 2, 3] and distance != last_notified_distance:
                     msg = f"🔥 準備看電視！目標預計在 {distance} 個人次內上場打擊！\n目前打者：第 {current_order} 棒。\n{batter_text}"
-                    # send_telegram_notify(msg)  # 為了 debug 先屏蔽
                     print(msg)
                     send_desktop_notify("⚾ 林安可即將上場！", msg)
                     last_notified_distance = distance
@@ -194,7 +192,6 @@ def monitor_game(game_id, lin_order):
                 print(f"[DEBUG] 當前比賽狀態: {status_text.strip()}")
                 if '試合終了' in status_text or '中止' in status_text:
                     msg = "⚾ 今日西武獅比賽已結束或中止！Agent 進入休息模式。"
-                    # send_telegram_notify(msg)  # 為了 debug 先屏蔽
                     print(msg)
                     send_desktop_notify("⚾ 比賽結束", msg)
                     break
@@ -225,7 +222,6 @@ def daily_job(only_pitcher=False):
     if game_id:
         print(f"Game ID: {game_id}")
         msg = f"🦁 發現今日西武獅賽程！開打時間：{start_time}\n將於比賽開打時啟動打擊監控。"
-        # send_telegram_notify(msg) # 為了 debug 先屏蔽
         print(msg)
         
         # 解析開賽時間，設定計時器等待到開賽
