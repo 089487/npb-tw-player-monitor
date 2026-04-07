@@ -24,7 +24,14 @@ def send_desktop_notify(title, message):
         if sys_name == 'Linux':
             subprocess.run(['notify-send', title, message])
         elif sys_name == 'Darwin': # macOS
-            subprocess.run(['osascript', '-e', f'display notification "{message}" with title "{title}"'])
+            print('mac')
+            try:
+                # 嘗試使用 terminal-notifier 發送通知
+                subprocess.run(['terminal-notifier', '-title', title, '-message', message], check=True)
+            except FileNotFoundError:
+                print("[警告] 找不到 terminal-notifier！請確認已使用 `brew install terminal-notifier` 安裝，或將其加入環境變數中。")
+            except Exception as ex:
+                print(f"[警告] macOS 通知發送失敗: {ex}")
         elif sys_name == 'Windows':
             # 需安裝 win10toast 或 plyer，這裡示範用 plyer
             from plyer import notification
@@ -77,6 +84,7 @@ def get_lin_batting_order(game_id):
                     return order
                     
         print("未找到林安可的先發打序。")
+        return None
     except Exception as e:
         print(f"取得打序錯誤: {e}")
     return None
@@ -253,17 +261,23 @@ def daily_job(only_pitcher=False):
             else:
                 print("👉 已經超過開賽時間，立即啟動！")
 
-        # 取得打序 (實務上可以寫一個 while 迴圈直到開打前一刻再去抓)
+        # 取得打序 (直到開打前或比賽中打者上場為止)
         lin_order = get_lin_batting_order(game_id)
-        if not lin_order:
-            # 備用防呆機制
-            lin_order = 4 
+        
+        while not lin_order and not only_pitcher:
+            print("目標打者目前未先發上場，等待 1 分鐘後重新查詢打序...")
+            time.sleep(60)
+            lin_order = get_lin_batting_order(game_id)
             
+            # 若加入比賽狀態判斷，可以在這裡避免比賽結束還一直查
+            # (在此為求簡化，僅實作每 1 分鐘重新 request 的邏輯)
+
         # 啟動監控
         if only_pitcher:
             monitor_game(game_id, -1)
         else:
-            monitor_game(game_id,lin_order)
+            if lin_order:
+                monitor_game(game_id, lin_order)
     else:
         print("今日西武獅無賽程，Agent 繼續睡覺。")
 
@@ -271,6 +285,7 @@ def daily_job(only_pitcher=False):
 schedule.every().day.at("09:00").do(daily_job)
 
 if __name__ == "__main__":
+
     print("啟動林安可上場通知 Agent...")
     daily_job() # 啟動時先檢查一次
     while True:
