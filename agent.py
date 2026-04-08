@@ -126,22 +126,24 @@ def monitor_game_batter(soup, html_text, lin_order, last_notified_distance):
         # 判斷是否為自家球隊攻擊中
         is_our_team_batting = False 
         
-        # 1. 優先從計分板判斷（尋找當前局數呈現黃色底或是帶有 '-' 的欄位）
-        now_cell = soup.find('td', class_='bb-gameScoreTable__data--now')
-        if now_cell:
-            # 若有找到現在的局數，所在的 row 有包含我們球隊 (TEAM_NAME)，代表我們進攻
-            row = now_cell.find_parent('tr')
-            if row and TEAM_NAME in row.text:
-                is_our_team_batting = True
-        else:
-            # 2. 備用邏輯：從文字轉播區塊的隊名或打者判斷
-            team_tag = soup.find('p', class_='bb-liveText__team')
-            if team_tag and TEAM_NAME in team_tag.text:
-                is_our_team_batting = True
-            elif TEAM_NAME in batter_text:
-                is_our_team_batting = True
+        # 直接從最新的文字轉播區塊判斷當前攻擊方
+        live_sections = soup.find_all('section', class_='bb-liveText')
+        if live_sections:
+            # 抓取最上面 (最新) 的那個 section
+            latest_section = live_sections[0]
+            detail_tag = latest_section.find('p', class_='bb-liveText__detail')
+            
+            if detail_tag and 'の攻撃' in detail_tag.text:
+                # 例如: "西武の攻撃" 或 "ソフトバンクの攻撃"
+                if TEAM_NAME in detail_tag.text:
+                    is_our_team_batting = True
             else:
-                # 當沒有明確標示時，退回預設 True 以免漏訊
+                # 備用邏輯：若沒抓到 p.bb-liveText__detail，則依據打者字串判斷
+                if TEAM_NAME in batter_text:
+                    is_our_team_batting = True
+        else:
+            # 無法取得 section 區塊時的備用邏輯
+            if TEAM_NAME in batter_text:
                 is_our_team_batting = True
                 
         print('is our team or not',is_our_team_batting)
