@@ -230,9 +230,6 @@ def daily_job(only_pitcher=False):
     game_id, start_time = get_today_seibu_game()
     
     if game_id:
-        print(f"Game ID: {game_id}")
-        msg = f"🦁 發現今日西武獅賽程！開打時間：{start_time}\n將於比賽開打時啟動打擊監控。"
-        print(msg)
         
         # 解析開賽時間，設定計時器等待到開賽
         match = re.search(r'(\d{1,2}):(\d{2})', start_time)
@@ -241,6 +238,10 @@ def daily_job(only_pitcher=False):
             # Yahoo 上顯示的是日本時間，轉為台灣時間需扣除 1 小時
             target_time = now.replace(hour=int(match.group(1)), minute=int(match.group(2)), second=0, microsecond=0) - timedelta(hours=1)
             wait_seconds = (target_time - now).total_seconds()
+
+            print(f"Game ID: {game_id}")
+            msg = f"🦁 發現今日西武獅賽程！開打時間：{target_time}\n將於比賽開打時啟動打擊監控。"
+            print(msg)
             
             if wait_seconds > 0:
                 while True:
