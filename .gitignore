@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+example_text.html
+finish_score.html
+example_score.html
+current_score.html
+schedule.html

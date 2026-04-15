@@ -5,11 +5,16 @@ import schedule
 import re
 import platform
 import subprocess
+import os
 import threading
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+# 載入 .env 檔案中的環境變數
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 # ================= 設定區 =================
-# TARGET_PLAYERS 格式：每個球員包括 names (可能的名稱變體), team, role (Batter/Pitcher)
+DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
 TARGET_PLAYERS = [
     {
         'names': ['林安可', '林 安可' ],
@@ -47,8 +52,30 @@ HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 }
 
+def send_discord_notify(title, message):
+    """發送訊息到 Discord 頻道 (使用 Webhook)"""
+    if not DISCORD_WEBHOOK_URL:
+        return
+        
+    payload = {
+        "embeds": [
+            {
+                "title": title,
+                "description": message,
+                "color": 3447003, # 藍色
+                "timestamp": datetime.now().astimezone().isoformat()
+            }
+        ]
+    }
+    try:
+        response = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
+        response.raise_for_status()
+    except Exception as e:
+        print(f"Discord 通知發送失敗: {e}")
+
 def send_desktop_notify(title, message):
-    """跨平台發送桌面推播通知"""
+    """跨平台發送桌面推播通知，並同步發送到 Discord"""
+    # 1. 桌面通知
     try:
         sys_name = platform.system()
         if sys_name == 'Linux':
@@ -62,6 +89,9 @@ def send_desktop_notify(title, message):
             print(f"不支援的系統桌面通知 ({sys_name}): {title} - {message}")
     except Exception as e:
         print(f"桌面通知發送失敗: {e}")
+    
+    # 2. Discord 通知
+    send_discord_notify(title, message)
 
 def get_player_by_name(player_name):
     """根據球員名稱查找 TARGET_PLAYERS 中的球員資訊"""
@@ -122,6 +152,8 @@ def get_batting_orders(game_id):
                         player_key = player['names'][0]
                         batting_orders[player_key] = order
                         print(f"✓ 確認 {player_name} (隊伍: {player['team']}) 在先發名單中，擔任第 {order} 棒\n")
+                        # also send the notification
+                        send_desktop_notify("✓ 確認 ",f"{player_name} (隊伍: {player['team']}) 在先發名單中，擔任第 {order} 棒")
     except Exception as e:
         print(f"取得打序錯誤: {e}")
     
@@ -255,6 +287,7 @@ def monitor_game_task(game_id, start_time, detected_teams):
     inning_switch = 0
     
     print(f"[Match {game_id}] 開始賽程即時監控...")
+
     
     while True:
         try:
