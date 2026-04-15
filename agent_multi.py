@@ -152,8 +152,9 @@ def get_batting_orders(game_id):
                         player_key = player['names'][0]
                         batting_orders[player_key] = order
                         print(f"✓ 確認 {player_name} (隊伍: {player['team']}) 在先發名單中，擔任第 {order} 棒\n")
+                        msg = f"{player_name} (隊伍: {player['team']}) 在先發名單中，擔任第 {order} 棒"
                         # also send the notification
-                        send_desktop_notify("✓ 確認 ",f"{player_name} (隊伍: {player['team']}) 在先發名單中，擔任第 {order} 棒")
+                        send_desktop_notify("先發打擊", msg)
     except Exception as e:
         print(f"取得打序錯誤: {e}")
     
@@ -261,6 +262,9 @@ def monitor_game_task(game_id, start_time, detected_teams):
         
         if wait_seconds > 0:
             print(f"[Match {game_id}] ⚽ 發現比賽！開打時間：{target_time} - 目標隊伍: {', '.join(detected_teams)}")
+            msg = f"⚽ 發現比賽！開打時間：{target_time} - 目標隊伍: {', '.join(detected_teams)}"
+            # send discord notify
+            send_desktop_notify("今晚比賽時程", msg)
             while True:
                 current_now = datetime.now()
                 remaining_seconds = (target_time - current_now).total_seconds()
