@@ -1,6 +1,6 @@
 # 日職台灣球員出賽監控 Agent (NPB Taiwan Player Monitor)
 
-這是一個基於 Python 的自動化腳本，用來即時監控日本職棒 (NPB) Yahoo 體育的比賽轉播資訊。當指定的台灣球員（打者）即將上場打擊，或是指定的台灣投手登板時，會自動透過 **Linux 桌面通知** 或是 **Telegram 機器人** 發出提醒。讓你能準時打開轉播，不再錯過精彩時刻！
+這是一個基於 Python 的自動化腳本，用來即時監控日本職棒 (NPB) Yahoo 體育的比賽轉播資訊。當指定的台灣球員（打者）即將上場打擊，或是指定的台灣投手登板時，會自動透過桌面通知或 Discord 發出提醒。讓你能準時打開轉播，不再錯過精彩時刻！
 
 ## 🎯 核心功能
 
@@ -23,7 +23,7 @@
 - **Python 3.x**
 - **作業系統**：
   - **Linux**：會呼叫原生的 `notify-send`（需確保系統裝有 `libnotify`）。
-  - **macOS**：需透過 Homebrew 安裝 `terminal-notifier` (`brew install terminal-notifier`) 或使用內建 AppleScript。
+  - **macOS**：支援使用內建 AppleScript 或 `terminal-notifier`。
   - **Windows**：需要安裝 `plyer` 以觸發 Action Center 通知。
 
 ### 安裝 Python 套件
@@ -43,73 +43,46 @@ pip install -r requirements.txt
 
 ## ⚙️ 設定說明
 
-本專案使用 `.env` 檔案管理敏感資訊。請先建立 `.env` 檔案並填寫以下內容：
-
+### 1. 建立環境變數
+建立一個 `.env` 檔案並填寫以下內容：
 ```env
-DISCORD_WEBHOOK_URL=你的_WEBHOOK_URL
-LINE_NOTIFY_TOKEN=你的_LINE_NOTIFY_TOKEN
+DISCORD_WEBHOOK_URL=你的_DISCORD_WEBHOOK_URL
 ```
 
-### 如何取得 LINE Notify Token？
-1. 登入 [LINE Notify 個人頁面](https://notify-bot.line.me/my/)。
-2. 點擊「發行權杖 (Generate token)」。
-3. 選擇要接收通知的聊天室（或選擇「透過 1:1 聊天接收 LINE Notify 的通知」）。
-4. 點擊「發行」並複製密鑰，貼到 `.env` 檔案中。
+### 2. 球員與隊伍設定
+在 `agent_multi.py` 的 `TARGET_PLAYERS` 列表中設定你要關注的球員。**球員姓名與隊伍簡稱必須與 Yahoo NPB 網頁顯示完全一致。**
 
-## 🚀 使用方式
-
-## 🛠 安裝與環境需求
-
-### 系統環境
-- **Python 3.x**
-- **作業系統**：
-  - **Linux**：會呼叫原生的 `notify-send`（需確保系統裝有 `libnotify`）。
-  - **macOS**：需透過 Homebrew 安裝 `terminal-notifier` (`brew install terminal-notifier`)。
-  - **Windows**：需要安裝 `plyer` 以觸發 Action Center 通知。
-
-### 安裝 Python 套件
-
-請複製專案，並使用 `pip` 安裝 `requirements.txt` 內的依賴套件：
-
-```bash
-pip install -r requirements.txt
-```
-
-核心相依套件包含：
-- `requests` (發送 HTTP 請求)
-- `beautifulsoup4` (解析 HTML DOM)
-- `schedule` (排程任務)
-- `plyer` (提供 Windows 跨平台通知)
-
-## ⚙️ 設定說明
-
-打開 `agent_multi.py`，你可以在頂部的「設定區」修改你的專屬參數：
-
+範例設定：
 ```python
-# ================= 設定區 =================
-# TARGET_PLAYERS 格式：每個球員包括 names (可能的名稱變體), team, role (Batter/Pitcher)
 TARGET_PLAYERS = [
     {
-        'names': ['林安可', '林 安可' ],
-        'team': '西武', # 可將隊伍改成日本 Yahoo 上的隊伍簡稱
+        'names': ['林安可', '林 安可'], 
+        'team': '西武',
         'role': 'Batter'
     },
     {
-        'names': ['宋家豪', '宋 家豪'],
-        'team': '楽天',
+        'names': ['古林 睿煬', '古林睿煬', '古林'],
+        'team': '日本ハム',
         'role': 'Pitcher'
     },
-    # ... 支援多個球員監控 ...
+    {
+        'names': ['徐 若熙', '徐若熙'],
+        'team': 'ソフトバンク',
+        'role': 'Pitcher'
+    },
 ]
-
-# 抽取 TEAM_NAMES 用於賽程搜尋
-TEAM_NAMES = list(set(player['team'] for player in TARGET_PLAYERS))
-# ==========================================
 ```
+
+### ⚾ 隊伍名稱參考 (Yahoo NPB)
+請參考 [Yahoo NPB 賽程頁面](https://baseball.yahoo.co.jp/npb/schedule/) 上的隊伍名稱。
+
+常見隊伍簡稱：
+- `西武`, `楽天`, `日本ハム`, `ソフトバンク`, `オリックス`, `ロッテ`
+- `巨人`, `阪神`, `中日`, `ＤｅＮＡ`, `広島`, `ヤクルト`
 
 ## 🚀 使用方式
 
-確保環境與設定檔準備完畢後，直接執行主程式：
+確保環境與設定檔準備完畢後，執行主程式：
 
 ```bash
 python agent_multi.py
@@ -117,9 +90,9 @@ python agent_multi.py
 
 - 程式啟動後會先執行一次當天的賽程檢查。
 - 如果比賽尚未開打，終端機會出現「倒數時間」並進入休眠。
-- 如果比賽已經打完或當天無賽程，將會進入休息狀態，隔天早上 9:00 再次喚醒檢查。
+- 如果比賽已經結束或當天無賽程，將進入隔日檢查模式。
 
 ## 🚧 已知限制 / TODO
 
-1. **目前投手監控部份尚未完成且不穩定**：計分板解析投手的欄位位置有可能因 Yahoo 頁面更動而抓取失敗，此部分持續優化中。
-2. 若頁面結構改版（例如換行、class 名稱變更等），可能需進一步維護 XPath/CSS Selector 抓取邏輯。
+1. **目前投手監控部份仍在優化中**：計分板解析投手的欄位位置有可能因網頁結構變動而失效。
+2. **網路連線**：需確保網路暢通以便即時抓取最新賽況。
