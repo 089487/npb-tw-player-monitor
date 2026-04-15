@@ -13,10 +13,50 @@
 - **📱 跨平台多路通知**：
   - 自動偵測系統 (Linux/macOS/Windows) 並推播通知。
   - **Discord Webhook**：支援將通知同步推送到 Discord 頻道。
-  - **LINE Notify**：支援透過 LINE Notify 發送即時訊息（適合手機端接收）。
 - **⚠️ 監控邏輯優化**：
   - 開賽前或比賽中若目標打者未先發上場（如可能代打），每 1 分鐘將自動重新查詢打序，隨時掌握上場時機。
   - 根據文字與計分板頁面，即時判斷現在是哪一局、誰進攻及場上投手。
+
+## 🛠 安裝與環境需求
+
+### 系統環境
+- **Python 3.x**
+- **作業系統**：
+  - **Linux**：會呼叫原生的 `notify-send`（需確保系統裝有 `libnotify`）。
+  - **macOS**：需透過 Homebrew 安裝 `terminal-notifier` (`brew install terminal-notifier`) 或使用內建 AppleScript。
+  - **Windows**：需要安裝 `plyer` 以觸發 Action Center 通知。
+
+### 安裝 Python 套件
+
+請複製專案，並使用 `pip` 安裝 `requirements.txt` 內的依賴套件：
+
+```bash
+pip install -r requirements.txt
+```
+
+核心相依套件包含：
+- `requests` (發送 HTTP 請求)
+- `beautifulsoup4` (解析 HTML DOM)
+- `schedule` (排程任務)
+- `plyer` (提供 Windows 跨平台通知)
+- `python-dotenv` (安全讀取環境變數)
+
+## ⚙️ 設定說明
+
+本專案使用 `.env` 檔案管理敏感資訊。請先建立 `.env` 檔案並填寫以下內容：
+
+```env
+DISCORD_WEBHOOK_URL=你的_WEBHOOK_URL
+LINE_NOTIFY_TOKEN=你的_LINE_NOTIFY_TOKEN
+```
+
+### 如何取得 LINE Notify Token？
+1. 登入 [LINE Notify 個人頁面](https://notify-bot.line.me/my/)。
+2. 點擊「發行權杖 (Generate token)」。
+3. 選擇要接收通知的聊天室（或選擇「透過 1:1 聊天接收 LINE Notify 的通知」）。
+4. 點擊「發行」並複製密鑰，貼到 `.env` 檔案中。
+
+## 🚀 使用方式
 
 ## 🛠 安裝與環境需求
 
