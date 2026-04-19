@@ -335,13 +335,16 @@ def monitor_game_task(game_id, start_time, detected_teams):
                 if '試合終了' in status_text or '中止' in status_text:
                     msg = f"⚾ 比賽 {game_id} ({', '.join(detected_teams)}) 已結束或中止！"
                     print(msg)
-                    send_desktop_notify("⚾ 比賽結束", msg)
+                    # 只有在有目標球員上場（不論打者或投手）過才發送結束通知
+                    if batting_orders or last_notified_pitchers.get('current'):
+                        send_desktop_notify("⚾ 比賽結束", msg)
                     break
             else:
                 if '試合終了' in soup_score.text:
                     msg = f"⚾ 比賽 {game_id} ({', '.join(detected_teams)}) 已結束！"
                     print(msg)
-                    send_desktop_notify("⚾ 比賽結束", msg)
+                    if batting_orders or last_notified_pitchers.get('current'):
+                        send_desktop_notify("⚾ 比賽結束", msg)
                     break
             
             # 判斷攻防狀態
