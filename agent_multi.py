@@ -186,7 +186,7 @@ def monitor_game_pitchers(game_id, soup, last_notified_pitchers, topbot):
             
     return last_notified_pitchers
 
-def monitor_game_batters(game_id, soup, batting_orders, last_notified_distances, player_batting_flags):
+def monitor_game_batters(game_id, soup, batting_orders, last_notified_distances, player_batting_flags, player_at_bats):
     """監測打者棒次是否即將輪到目標選手"""
     # 取得最新的 live 區段 (通常是第一筆)
     live_sections = soup.find_all('section', class_='bb-liveText')
@@ -252,16 +252,27 @@ def monitor_game_batters(game_id, soup, batting_orders, last_notified_distances,
                             still_batting = True
                             
                 if not still_batting:
-                    # 打擊結束，找回前一打席的 state_text
+                    # 打擊結束，去 stats 抓出最近一次打擊結果
                     result_text = "未知結果"
-                    if len(live_sections) > 1:
-                        prev_section = live_sections[1]
-                        text_tag = prev_section.find('p', class_='bb-liveText__text')
-                        if text_tag:
-                            result_text = text_tag.text.strip()
-                        else:
-                            result_text = prev_section.text.strip()
-                        result_text = re.sub(r'\s+', ' ', result_text)
+                    try:
+                        url_stats = f"https://baseball.yahoo.co.jp/npb/game/{game_id}/stats"
+                        res_stats = requests.get(url_stats, headers=HEADERS)
+                        soup_stats = BeautifulSoup(res_stats.text, 'html.parser')
+                        rows = soup_stats.find_all('tr', class_='bb-statsTable__row')
+                        for row in rows:
+                            player_cell = row.find('td', class_='bb-statsTable__data--player')
+                            if player_cell and player_name in player_cell.text:
+                                details = row.find_all('div', class_='bb-statsTable__dataDetail')
+                                valid_results = [d.text.strip() for d in details if d.text.strip()]
+                                if valid_results:
+                                    result_text = valid_results[-1]
+                                    # 維護陣列
+                                    if player_name not in player_at_bats:
+                                        player_at_bats[player_name] = []
+                                    player_at_bats[player_name] = valid_results
+                                break
+                    except Exception as e:
+                        print(f"取得 stats 錯誤: {e}")
                         
                     msg = f"🔥 {player_name} 打擊剛結束！結果：{result_text}"
                     print(f"[Match {game_id}] {msg}")
@@ -349,6 +360,7 @@ def monitor_game_task(game_id, start_time, detected_teams):
     last_notified_distances = {}
     last_notified_pitchers = {'current': ''}
     player_batting_flags = {}
+    player_at_bats = {}
     inning_switch = 0
     
     print(f"[Match {game_id}] 開始賽程即時監控...")
@@ -374,6 +386,12 @@ def monitor_game_task(game_id, start_time, detected_teams):
                 if '試合終了' in status_text or '中止' in status_text:
                     msg = f"⚾ 比賽 {game_id} ({', '.join(detected_teams)}) 已結束或中止！"
                     print(msg)
+                    if player_at_bats:
+                        summary_msg = "本日打擊成績：\n"
+                        for player_name, results in player_at_bats.items():
+                            summary_msg += f"{player_name}: {', '.join(results)}\n"
+                        print(summary_msg)
+                        send_desktop_notify("⚾ 打擊成績總結", summary_msg)
                     # 只有在有目標球員上場（不論打者或投手）過才發送結束通知
                     if batting_orders or last_notified_pitchers.get('current'):
                         send_desktop_notify("⚾ 比賽結束", msg)
@@ -382,6 +400,12 @@ def monitor_game_task(game_id, start_time, detected_teams):
                 if '試合終了' in soup_score.text:
                     msg = f"⚾ 比賽 {game_id} ({', '.join(detected_teams)}) 已結束！"
                     print(msg)
+                    if player_at_bats:
+                        summary_msg = "本日打擊成績：\n"
+                        for player_name, results in player_at_bats.items():
+                            summary_msg += f"{player_name}: {', '.join(results)}\n"
+                        print(summary_msg)
+                        send_desktop_notify("⚾ 打擊成績總結", summary_msg)
                     if batting_orders or last_notified_pitchers.get('current'):
                         send_desktop_notify("⚾ 比賽結束", msg)
                     break
@@ -404,7 +428,7 @@ def monitor_game_task(game_id, start_time, detected_teams):
             
             # 監測打者
             if batting_orders:
-                last_notified_distances, player_batting_flags = monitor_game_batters(game_id, soup_text, batting_orders, last_notified_distances, player_batting_flags)
+                last_notified_distances, player_batting_flags = monitor_game_batters(game_id, soup_text, batting_orders, last_notified_distances, player_batting_flags, player_at_bats)
 
         except Exception as e:
             print(f"[Match {game_id}] 監控錯誤: {e}")
