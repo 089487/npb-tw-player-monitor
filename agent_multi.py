@@ -186,12 +186,12 @@ def monitor_game_pitchers(game_id, soup, last_notified_pitchers, topbot):
             
     return last_notified_pitchers
 
-def monitor_game_batters(game_id, soup, batting_orders, last_notified_distances):
+def monitor_game_batters(game_id, soup, batting_orders, last_notified_distances, player_batting_flags):
     """監測打者棒次是否即將輪到目標選手"""
     # 取得最新的 live 區段 (通常是第一筆)
     live_sections = soup.find_all('section', class_='bb-liveText')
     if not live_sections:
-        return last_notified_distances
+        return last_notified_distances, player_batting_flags
         
     latest_section = live_sections[0]
     
@@ -221,13 +221,15 @@ def monitor_game_batters(game_id, soup, batting_orders, last_notified_distances)
                     batting_team = team
                     break
                 
+        current_order = -1
+        outs = 0
+        
         if is_our_team_batting:
             match = re.search(r'(\d+)番', batter_text)
             if match:
                 current_order = int(match.group(1))
                 
                 # 從當前打者的 state 中提取出局數
-                outs = 0
                 state_tag = batter_tag.find('span', class_='bb-liveText__state')
                 if state_tag:
                     state_text = state_tag.text.strip()
@@ -235,43 +237,79 @@ def monitor_game_batters(game_id, soup, batting_orders, last_notified_distances)
                     elif '二死' in state_text: outs = 2
                     elif '一死' in state_text: outs = 1
                     elif '無死' in state_text: outs = 0
-                
-                remaining_outs = 3 - outs
-                
-                # 對每個目標打者檢查
-                for player_name, target_order in batting_orders.items():
-                    # 確保是該球員所屬球隊在進攻，否則不推播該球員
-                    player_info = get_player_by_name(player_name)
-                    if player_info and batting_team and player_info['team'] != batting_team:
-                        continue
-                        
-                    # 計算距離
-                    distance = (target_order - current_order) % 9
                     
-                    if player_name not in last_notified_distances:
-                        last_notified_distances[player_name] = -1
-                    
-                    # 判斷邏輯：如果距離小於等於剩餘出局數 (表示該半局有機會上場)
-                    # distance 為 0 表示正在打擊
-                    should_notify = (distance == 0) or (distance > 0 and distance <= min(remaining_outs,2))
-                    
-                    if should_notify and distance != last_notified_distances[player_name]:
-                        out_desc = f"{outs} 出局"
-                        if distance == 0:
-                            msg = f"🔥 {player_name} 正在打擊！({out_desc})"
+        remaining_outs = 3 - outs
+        
+        # 檢查打擊結束並輸出結果
+        for player_name in list(player_batting_flags.keys()):
+            if player_batting_flags.get(player_name):
+                still_batting = False
+                player_info = get_player_by_name(player_name)
+                if is_our_team_batting and current_order != -1 and player_info:
+                    if batting_team and player_info['team'] == batting_team:
+                        target_order = batting_orders.get(player_name, -1)
+                        if target_order != -1 and ((target_order - current_order) % 9) == 0:
+                            still_batting = True
+                            
+                if not still_batting:
+                    # 打擊結束，找回前一打席的 state_text
+                    result_text = "未知結果"
+                    if len(live_sections) > 1:
+                        prev_section = live_sections[1]
+                        text_tag = prev_section.find('p', class_='bb-liveText__text')
+                        if text_tag:
+                            result_text = text_tag.text.strip()
                         else:
-                            msg = f"🔥 準備看電視！{player_name} 預計在 {distance} 個人次內上場打擊！\n目前：{out_desc}，第 {current_order} 棒。"
+                            result_text = prev_section.text.strip()
+                        result_text = re.sub(r'\s+', ' ', result_text)
                         
-                        print(f"[Match {game_id}] {msg}")
-                        send_desktop_notify(f"⚾ {player_name} 即將上場！", msg)
-                        last_notified_distances[player_name] = distance
-                        
-                    # 當打擊結束或該半局沒機會上場時，重置通知鎖定
-                    if distance > remaining_outs and distance < 8:
-                        if last_notified_distances[player_name] != -1:
-                            print(f"[Match {game_id}] [DEBUG] {player_name} 的打擊機會已過或本局難度高，重置通知鎖定狀態")
-                        last_notified_distances[player_name] = -1        
-    return last_notified_distances
+                    msg = f"🔥 {player_name} 打擊剛結束！結果：{result_text}"
+                    print(f"[Match {game_id}] {msg}")
+                    send_desktop_notify(f"⚾ {player_name} 打席結果", msg)
+                    
+                    player_batting_flags[player_name] = False
+
+        if is_our_team_batting and current_order != -1:
+            # 對每個目標打者檢查
+            for player_name, target_order in batting_orders.items():
+                # 確保是該球員所屬球隊在進攻，否則不推播該球員
+                player_info = get_player_by_name(player_name)
+                if player_info and batting_team and player_info['team'] != batting_team:
+                    continue
+                    
+                # 計算距離
+                distance = (target_order - current_order) % 9
+                
+                if player_name not in last_notified_distances:
+                    last_notified_distances[player_name] = -1
+                    
+                if player_name not in player_batting_flags:
+                    player_batting_flags[player_name] = False
+                    
+                if distance == 0:
+                    player_batting_flags[player_name] = True
+                
+                # 判斷邏輯：如果距離小於等於剩餘出局數 (表示該半局有機會上場)
+                # distance 為 0 表示正在打擊
+                should_notify = (distance == 0) or (distance > 0 and distance <= min(remaining_outs,2))
+                
+                if should_notify and distance != last_notified_distances[player_name]:
+                    out_desc = f"{outs} 出局"
+                    if distance == 0:
+                        msg = f"🔥 {player_name} 正在打擊！({out_desc})"
+                    else:
+                        msg = f"🔥 準備看電視！{player_name} 預計在 {distance} 個人次內上場打擊！\n目前：{out_desc}，第 {current_order} 棒。"
+                    
+                    print(f"[Match {game_id}] {msg}")
+                    send_desktop_notify(f"⚾ {player_name} 即將上場！", msg)
+                    last_notified_distances[player_name] = distance
+                    
+                # 當打擊結束或該半局沒機會上場時，重置通知鎖定
+                if distance > remaining_outs and distance < 8:
+                    if last_notified_distances[player_name] != -1:
+                        print(f"[Match {game_id}] [DEBUG] {player_name} 的打擊機會已過或本局難度高，重置通知鎖定狀態")
+                    last_notified_distances[player_name] = -1        
+    return last_notified_distances, player_batting_flags
 
 def monitor_game_task(game_id, start_time, detected_teams):
     """監控單場比賽的獨立任務"""
@@ -310,6 +348,7 @@ def monitor_game_task(game_id, start_time, detected_teams):
     
     last_notified_distances = {}
     last_notified_pitchers = {'current': ''}
+    player_batting_flags = {}
     inning_switch = 0
     
     print(f"[Match {game_id}] 開始賽程即時監控...")
@@ -365,7 +404,7 @@ def monitor_game_task(game_id, start_time, detected_teams):
             
             # 監測打者
             if batting_orders:
-                last_notified_distances = monitor_game_batters(game_id, soup_text, batting_orders, last_notified_distances)
+                last_notified_distances, player_batting_flags = monitor_game_batters(game_id, soup_text, batting_orders, last_notified_distances, player_batting_flags)
 
         except Exception as e:
             print(f"[Match {game_id}] 監控錯誤: {e}")
