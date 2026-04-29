@@ -253,7 +253,7 @@ def monitor_game_batters(game_id, soup, batting_orders, last_notified_distances)
                     
                     # 判斷邏輯：如果距離小於等於剩餘出局數 (表示該半局有機會上場)
                     # distance 為 0 表示正在打擊
-                    should_notify = (distance == 0) or (distance > 0 and distance <= remaining_outs)
+                    should_notify = (distance == 0) or (distance > 0 and distance <= min(remaining_outs,2))
                     
                     if should_notify and distance != last_notified_distances[player_name]:
                         out_desc = f"{outs} 出局"
